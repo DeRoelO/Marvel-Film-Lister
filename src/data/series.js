@@ -1,0 +1,7 @@
+export const series = [
+    { "id": 101, "title": "WandaVision (Seizoen 1)", "story_year": "2023.5", "platform": "Disney+", "watched": false, "universe_tags": ["MCU", "Disney+ Serie"], "prerequisites": [59], "notes": "Speelt weken na Avengers: Endgame. Essentieel voor Doctor Strange in the Multiverse of Madness en The Marvels." },
+    { "id": 102, "title": "The Falcon and The Winter Soldier (Seizoen 1)", "story_year": "2023.6", "platform": "Disney+", "watched": false, "universe_tags": ["MCU", "Disney+ Serie"], "prerequisites": [59], "notes": "Speelt maanden na Avengers: Endgame. Essentieel voor Captain America: Brave New World en Thunderbolts." },
+    { "id": 103, "title": "Loki (Seizoen 1)", "story_year": "2023.7", "platform": "Disney+", "watched": false, "universe_tags": ["MCU", "Disney+ Serie"], "prerequisites": [30, 59], "notes": "Gebeurtenissen starten na The Avengers (2012 Loki) maar impact is multiversaal en relevant na Endgame, voor Fase 4/5." },
+    { "id": 104, "title": "Ms. Marvel (Seizoen 1)", "story_year": "2025", "platform": "Disney+", "watched": false, "universe_tags": ["MCU", "Disney+ Serie"], "prerequisites": [59], "notes": "Speelt na Endgame. Essentieel voor The Marvels." },
+    { "id": 105, "title": "Loki (Seizoen 2)", "story_year": "2025.4", "platform": "Disney+", "watched": false, "universe_tags": ["MCU", "Disney+ Serie"], "prerequisites": [103], "notes": "Direct vervolg op Loki Seizoen 1. Belangrijk voor de Multiverse Saga." }
+]; 
