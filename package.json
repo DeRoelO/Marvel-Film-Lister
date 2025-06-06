@@ -2,10 +2,17 @@
   "name": "marvel-viewing-lister",
   "version": "1.0.0",
   "description": "Marvel Viewing Lister Application",
+  "homepage": "https://DeRoelO.github.io/Marvel_Viewinglister",
   "scripts": {
-    "start": "http-server -p 8080"
+    "start": "http-server -p 8080",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d .",
+    "build": "echo 'No build step required'"
   },
   "dependencies": {
     "http-server": "^14.1.1"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
   }
-} 
+}
