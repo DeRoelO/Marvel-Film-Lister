@@ -217,4 +217,40 @@ function debugWatchlistGeneration(selectedItemId, filmData) {
         console.log(`${item.story_year}: ${item.title} (ID: ${item.id})`);
     });
     return itemsToDisplay;
+}
+
+// Helper functie om prerequisites toe te voegen
+function addPrerequisites(itemId, isOptional = false) {
+    const item = movies.find(m => m.id === itemId);
+    if (!item) return;
+
+    // Als het item al als verplicht is gemarkeerd, negeer dan de optionele markering
+    if (mandatoryItems.has(itemId)) {
+        return;
+    }
+
+    if (isOptional) {
+        optionalItems.add(itemId);
+    } else {
+        mandatoryItems.add(itemId);
+        // Verwijder het item uit optionele items als het nu verplicht is
+        optionalItems.delete(itemId);
+    }
+
+    // Voeg verplichte prerequisites toe
+    if (item.prerequisites) {
+        item.prerequisites.forEach(prereqId => {
+            addPrerequisites(prereqId, false);
+        });
+    }
+
+    // Voeg optionele prerequisites toe
+    if (item.optional_prerequisites) {
+        item.optional_prerequisites.forEach(prereqId => {
+            // Alleen toevoegen als het nog niet verplicht is
+            if (!mandatoryItems.has(prereqId)) {
+                addPrerequisites(prereqId, true);
+            }
+        });
+    }
 } 
