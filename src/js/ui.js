@@ -1,14 +1,39 @@
 import { movies } from '../data/movies.js';
 import { series } from '../data/series.js';
-import { saveWatchedStatusToFirestore } from './database.js';
+import { getCurrentUser, saveWatchedItems, getWatchedItems } from '../data/users.js';
 
 let lastSelectedFilmId = null;
 
-export function initializeUI() {
+// Helper functie om bekeken status te laden
+async function loadWatchedStatus() {
+    const currentUser = getCurrentUser();
+    if (currentUser) {
+        try {
+            const watchedItems = await getWatchedItems(currentUser.username);
+            const allItems = [...movies, ...series];
+            if (Array.isArray(watchedItems)) {
+                watchedItems.forEach(itemId => {
+                    const item = allItems.find(f => f.id === itemId);
+                    if (item) {
+                        item.watched = true;
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error loading watched status:', error);
+        }
+    }
+}
+
+export async function initializeUI() {
     const filmSelector = document.getElementById('filmSelector');
     const generateWatchlistBtn = document.getElementById('generateWatchlistBtn');
+    const clearWatchlistBtn = document.getElementById('clearWatchlistBtn');
     const outputArea = document.getElementById('outputArea');
     const outputTitle = document.getElementById('outputTitle');
+
+    // Load watched status from localStorage
+    await loadWatchedStatus();
 
     populateDropdown();
 
@@ -21,11 +46,37 @@ export function initializeUI() {
             return;
         }
         
-        // Debug output
         const allItems = [...movies, ...series];
-        debugWatchlistGeneration(selectedItemId, allItems);
-        
         outputArea.innerHTML = generateChronologicalWatchlistHtml(selectedItemId, allItems);
+
+        // Add event listener for the save button
+        const saveButton = document.getElementById('saveWatchlistBtn');
+        if (saveButton) {
+            saveButton.addEventListener('click', async () => {
+                const currentUser = getCurrentUser();
+                if (currentUser) {
+                    const watchedItems = allItems
+                        .filter(item => item.watched)
+                        .map(item => item.id);
+                    try {
+                        await saveWatchedItems(currentUser.username, watchedItems);
+                        alert('Kijkgeschiedenis opgeslagen!');
+                    } catch (error) {
+                        console.error('Error saving watch history:', error);
+                        alert('Er ging iets mis bij het opslaan van de kijkgeschiedenis.');
+                    }
+                } else {
+                    alert('Je moet ingelogd zijn om je kijkgeschiedenis op te slaan.');
+                }
+            });
+        }
+    });
+
+    clearWatchlistBtn.addEventListener('click', () => {
+        outputArea.innerHTML = '';
+        outputTitle.textContent = 'Selecteer een film of serie om een kijklijst te genereren';
+        lastSelectedFilmId = null;
+        filmSelector.value = '';
     });
 
     outputArea.addEventListener('change', async (event) => {
@@ -40,7 +91,25 @@ export function initializeUI() {
                 itemInDb.watched = isWatched;
             }
             
-            await saveWatchedStatusToFirestore(itemId, isWatched);
+            const currentUser = getCurrentUser();
+            if (currentUser) {
+                try {
+                    const watchedItems = await getWatchedItems(currentUser.username);
+                    if (isWatched) {
+                        if (!watchedItems.includes(itemId)) {
+                            watchedItems.push(itemId);
+                        }
+                    } else {
+                        const index = watchedItems.indexOf(itemId);
+                        if (index > -1) {
+                            watchedItems.splice(index, 1);
+                        }
+                    }
+                    await saveWatchedItems(currentUser.username, watchedItems);
+                } catch (error) {
+                    console.error('Error updating watched status:', error);
+                }
+            }
 
             if (lastSelectedFilmId) {
                 outputArea.innerHTML = generateChronologicalWatchlistHtml(lastSelectedFilmId, allItems);
@@ -112,26 +181,65 @@ function getSortableYear(storyYear) {
 }
 
 function generateChronologicalWatchlistHtml(selectedItemId, filmData) {
-    const collectedItemIdsSet = new Set();
-    const optionalItemsMap = new Map(); // Maps prerequisite ID to optional items
+    const mandatoryItems = new Set();
+    const optionalItems = new Set();
     
-    // Verzamel eerst alle benodigde items
-    collectAllFilmsForWatchlist(selectedItemId, filmData, collectedItemIdsSet);
-    collectedItemIdsSet.add(selectedItemId);
+    // Helper functie om prerequisites toe te voegen
+    function addPrerequisites(itemId, isOptional = false) {
+        const item = getFilmById(itemId, filmData);
+        if (!item) return;
 
-    // Verzamel optionele items en koppel ze aan hun prerequisites
-    filmData.forEach(item => {
-        if (item.optional_prerequisites && item.optional_prerequisites.length > 0) {
+        // Als het item al als verplicht is gemarkeerd, negeer dan de optionele markering
+        if (mandatoryItems.has(itemId)) {
+            return;
+        }
+
+        if (isOptional) {
+            optionalItems.add(itemId);
+        } else {
+            mandatoryItems.add(itemId);
+            // Verwijder het item uit optionele items als het nu verplicht is
+            optionalItems.delete(itemId);
+        }
+
+        // Voeg verplichte prerequisites toe
+        if (item.prerequisites) {
+            item.prerequisites.forEach(prereqId => {
+                addPrerequisites(prereqId, false);
+            });
+        }
+
+        // Voeg optionele prerequisites toe
+        if (item.optional_prerequisites) {
             item.optional_prerequisites.forEach(prereqId => {
-                if (!optionalItemsMap.has(prereqId)) {
-                    optionalItemsMap.set(prereqId, []);
+                // Alleen toevoegen als het nog niet verplicht is
+                if (!mandatoryItems.has(prereqId)) {
+                    addPrerequisites(prereqId, true);
                 }
-                optionalItemsMap.get(prereqId).push(item);
+            });
+        }
+    }
+
+    // Verzamel eerst alle benodigde items
+    addPrerequisites(selectedItemId, false);
+    mandatoryItems.add(selectedItemId);
+
+    // Controleer of er items zijn die verplicht zijn voor andere items in de lijst
+    filmData.forEach(item => {
+        if (item.prerequisites) {
+            item.prerequisites.forEach(prereqId => {
+                if (optionalItems.has(prereqId)) {
+                    // Als een optioneel item een verplichte prerequisite is, maak het verplicht
+                    optionalItems.delete(prereqId);
+                    mandatoryItems.add(prereqId);
+                }
             });
         }
     });
 
-    let itemsToDisplay = Array.from(collectedItemIdsSet).map(id => getFilmById(id, filmData)).filter(item => item != null);
+    let itemsToDisplay = [...mandatoryItems, ...optionalItems]
+        .map(id => getFilmById(id, filmData))
+        .filter(item => item != null);
 
     // Sorteer de items
     itemsToDisplay.sort((a, b) => {
@@ -139,49 +247,61 @@ function generateChronologicalWatchlistHtml(selectedItemId, filmData) {
         const yearB = getSortableYear(b.story_year);
 
         if (yearA !== yearB) return yearA - yearB;
-        
-        const idA = typeof a.id === 'number' ? a.id : parseFloat(a.id.toString().replace('S_', ''));
-        const idB = typeof b.id === 'number' ? b.id : parseFloat(b.id.toString().replace('S_', ''));
-        if (idA < 100 && idB >= 100) return -1; 
-        if (idA >= 100 && idB < 100) return 1; 
-        if (idA !== idB) return idA - idB;
         return a.title.localeCompare(b.title);
     });
 
-    if (itemsToDisplay.length === 0) return '<p class="text-center">Geen items gevonden voor de kijklijst.</p>';
+    // Bereken totale en resterende speelduur
+    const totalRuntime = itemsToDisplay.reduce((sum, item) => sum + (item.runtime || 0), 0);
+    const remainingRuntime = itemsToDisplay
+        .filter(item => !item.watched)
+        .reduce((sum, item) => sum + (item.runtime || 0), 0);
 
-    // Calculate total runtime
-    const totalRuntime = itemsToDisplay.reduce((total, item) => {
-        return total + (item.runtime || 0);
-    }, 0);
+    // Update runtime displays
+    document.getElementById('totalRuntime').textContent = formatRuntime(totalRuntime);
+    document.getElementById('remainingRuntime').textContent = formatRuntime(remainingRuntime);
 
-    const hours = Math.floor(totalRuntime / 60);
-    const minutes = totalRuntime % 60;
-    const runtimeText = `${hours} uur en ${minutes} minuten`;
-
-    // Generate HTML for the watchlist
     let html = '<div class="watchlist">';
     
-    // Add mandatory items
-    html += '<div class="mandatory-items">';
     itemsToDisplay.forEach(item => {
-        const isOptional = optionalItemsMap.has(item.id);
+        const isOptional = optionalItems.has(item.id);
+        const isSelected = item.id === selectedItemId;
+        
         html += `
-            <div class="watchlist-item ${isOptional ? 'optional' : ''}">
-                <div class="item-title">${isOptional ? '(Optioneel) ' : ''}${item.title}</div>
+            <div class="watchlist-item ${isOptional ? 'optional' : ''} ${isSelected ? 'selected' : ''}">
+                <input type="checkbox" 
+                       class="film-watched-checkbox" 
+                       data-film-id="${item.id}" 
+                       ${item.watched ? 'checked' : ''}>
+                ${isOptional ? '<div class="optional-badge">Optioneel</div>' : ''}
+                ${isSelected ? '<div class="selected-badge">Geselecteerd</div>' : ''}
+                <div class="item-content">
+                    <div class="item-title">${item.title}</div>
+                    ${item.notes ? `<div class="item-note">${item.notes}</div>` : ''}
+                </div>
+                <div class="item-icons">
+                    ${item.icons ? item.icons.map(icon => `
+                        <img src="src/assets/${icon}" 
+                             alt="${icon.replace('.ico', '')}" 
+                             title="${icon.replace('.ico', '')}" 
+                             class="item-icon">
+                    `).join('') : ''}
+                </div>
                 <div class="item-year">${item.story_year}</div>
-                <div class="item-platform">${item.platform}</div>
-                <div class="item-runtime">${item.runtime} min</div>
+                <div class="item-runtime">${formatRuntime(item.runtime)}</div>
             </div>
         `;
     });
+    
     html += '</div>';
-
-    // Add total runtime
-    html += `<div class="total-runtime">Totale speelduur: ${runtimeText}</div>`;
-    html += '</div>';
-
     return html;
+}
+
+// Helper functie om runtime te formatteren
+function formatRuntime(minutes) {
+    if (!minutes) return '0h 0m';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
 }
 
 function debugWatchlistGeneration(selectedItemId, filmData) {
@@ -217,40 +337,4 @@ function debugWatchlistGeneration(selectedItemId, filmData) {
         console.log(`${item.story_year}: ${item.title} (ID: ${item.id})`);
     });
     return itemsToDisplay;
-}
-
-// Helper functie om prerequisites toe te voegen
-function addPrerequisites(itemId, isOptional = false) {
-    const item = movies.find(m => m.id === itemId);
-    if (!item) return;
-
-    // Als het item al als verplicht is gemarkeerd, negeer dan de optionele markering
-    if (mandatoryItems.has(itemId)) {
-        return;
-    }
-
-    if (isOptional) {
-        optionalItems.add(itemId);
-    } else {
-        mandatoryItems.add(itemId);
-        // Verwijder het item uit optionele items als het nu verplicht is
-        optionalItems.delete(itemId);
-    }
-
-    // Voeg verplichte prerequisites toe
-    if (item.prerequisites) {
-        item.prerequisites.forEach(prereqId => {
-            addPrerequisites(prereqId, false);
-        });
-    }
-
-    // Voeg optionele prerequisites toe
-    if (item.optional_prerequisites) {
-        item.optional_prerequisites.forEach(prereqId => {
-            // Alleen toevoegen als het nog niet verplicht is
-            if (!mandatoryItems.has(prereqId)) {
-                addPrerequisites(prereqId, true);
-            }
-        });
-    }
 } 
