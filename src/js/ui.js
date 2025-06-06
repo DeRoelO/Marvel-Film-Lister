@@ -113,28 +113,27 @@ function getSortableYear(storyYear) {
 
 function generateChronologicalWatchlistHtml(selectedItemId, filmData) {
     const collectedItemIdsSet = new Set();
+    const optionalItemsMap = new Map(); // Maps prerequisite ID to optional items
     
     // Verzamel eerst alle benodigde items
     collectAllFilmsForWatchlist(selectedItemId, filmData, collectedItemIdsSet);
     collectedItemIdsSet.add(selectedItemId);
 
-    // Voeg alle One-Shots toe die relevant zijn voor de tijdlijn
-    const selectedItem = getFilmById(selectedItemId, filmData);
-    if (selectedItem) {
-        const selectedYear = getSortableYear(selectedItem.story_year);
-        filmData.forEach(item => {
-            if (item.title.includes('One-Shot')) {
-                const itemYear = getSortableYear(item.story_year);
-                // Voeg One-Shot toe als het in dezelfde tijdlijn past
-                if (itemYear <= selectedYear) {
-                    collectedItemIdsSet.add(item.id);
+    // Verzamel optionele items en koppel ze aan hun prerequisites
+    filmData.forEach(item => {
+        if (item.optional_prerequisites && item.optional_prerequisites.length > 0) {
+            item.optional_prerequisites.forEach(prereqId => {
+                if (!optionalItemsMap.has(prereqId)) {
+                    optionalItemsMap.set(prereqId, []);
                 }
-            }
-        });
-    }
+                optionalItemsMap.get(prereqId).push(item);
+            });
+        }
+    });
 
     let itemsToDisplay = Array.from(collectedItemIdsSet).map(id => getFilmById(id, filmData)).filter(item => item != null);
 
+    // Sorteer de items
     itemsToDisplay.sort((a, b) => {
         const yearA = getSortableYear(a.story_year);
         const yearB = getSortableYear(b.story_year);
@@ -151,22 +150,37 @@ function generateChronologicalWatchlistHtml(selectedItemId, filmData) {
 
     if (itemsToDisplay.length === 0) return '<p class="text-center">Geen items gevonden voor de kijklijst.</p>';
 
-    let html = '<ul>';
-    itemsToDisplay.forEach((item, index) => {
-        let itemNoteHtml = item.notes ? ` <span class="film-note">${item.notes}</span>` : '';
-        let watchedText = item.watched ? ' <span class="watched-text">(Bekeken)</span>' : '';
-        html += `<li class="watchlist-item">
-                    <input type="checkbox" class="film-watched-checkbox" data-film-id="${item.id}" ${item.watched ? 'checked' : ''}>
-                    <div class="film-content-wrapper">
-                        <div class="film-item-content">
-                            <span>${index + 1}. ${item.title}${watchedText}</span> 
-                            <span class="film-details">(${item.story_year}) [${item.universe_tags.join(', ')}]</span>
-                            ${itemNoteHtml}
-                        </div>
-                    </div>
-                 </li>`;
+    // Calculate total runtime
+    const totalRuntime = itemsToDisplay.reduce((total, item) => {
+        return total + (item.runtime || 0);
+    }, 0);
+
+    const hours = Math.floor(totalRuntime / 60);
+    const minutes = totalRuntime % 60;
+    const runtimeText = `${hours} uur en ${minutes} minuten`;
+
+    // Generate HTML for the watchlist
+    let html = '<div class="watchlist">';
+    
+    // Add mandatory items
+    html += '<div class="mandatory-items">';
+    itemsToDisplay.forEach(item => {
+        const isOptional = optionalItemsMap.has(item.id);
+        html += `
+            <div class="watchlist-item ${isOptional ? 'optional' : ''}">
+                <div class="item-title">${isOptional ? '(Optioneel) ' : ''}${item.title}</div>
+                <div class="item-year">${item.story_year}</div>
+                <div class="item-platform">${item.platform}</div>
+                <div class="item-runtime">${item.runtime} min</div>
+            </div>
+        `;
     });
-    html += '</ul>';
+    html += '</div>';
+
+    // Add total runtime
+    html += `<div class="total-runtime">Totale speelduur: ${runtimeText}</div>`;
+    html += '</div>';
+
     return html;
 }
 
