@@ -48,28 +48,6 @@ export async function initializeUI() {
         
         const allItems = [...movies, ...series];
         outputArea.innerHTML = generateChronologicalWatchlistHtml(selectedItemId, allItems);
-
-        // Add event listener for the save button
-        const saveButton = document.getElementById('saveWatchlistBtn');
-        if (saveButton) {
-            saveButton.addEventListener('click', async () => {
-                const currentUser = getCurrentUser();
-                if (currentUser) {
-                    const watchedItems = allItems
-                        .filter(item => item.watched)
-                        .map(item => item.id);
-                    try {
-                        await saveWatchedItems(currentUser.username, watchedItems);
-                        alert('Kijkgeschiedenis opgeslagen!');
-                    } catch (error) {
-                        console.error('Error saving watch history:', error);
-                        alert('Er ging iets mis bij het opslaan van de kijkgeschiedenis.');
-                    }
-                } else {
-                    alert('Je moet ingelogd zijn om je kijkgeschiedenis op te slaan.');
-                }
-            });
-        }
     });
 
     clearWatchlistBtn.addEventListener('click', () => {
