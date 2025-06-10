@@ -14,13 +14,15 @@ app.use(express.json());
 app.use(express.static('.'));
 
 // Data file path
-const DATA_FILE = path.join(__dirname, 'data', 'users.json');
+const DATA_FILE = path.join(__dirname, 'src', 'data', 'users.json');
 
 // Ensure data file exists
 async function ensureDataFile() {
     try {
         await fs.access(DATA_FILE);
     } catch {
+        // Ensure directory exists
+        await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
         await fs.writeFile(DATA_FILE, JSON.stringify({ users: [] }));
     }
 }

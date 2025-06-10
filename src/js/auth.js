@@ -86,13 +86,13 @@ function showRegisterForm() {
     mainContent.style.display = 'none';
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
     event.preventDefault();
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
 
     try {
-        const user = loginUser(username, password);
+        const user = await loginUser(username, password);
         setCurrentUser(user);
         showMainContent(username);
     } catch (error) {
@@ -100,14 +100,14 @@ function handleLogin(event) {
     }
 }
 
-function handleRegister(event) {
+async function handleRegister(event) {
     event.preventDefault();
     const username = document.getElementById('registerUsername').value;
     const password = document.getElementById('registerPassword').value;
 
     try {
-        createUser(username, password);
-        const user = loginUser(username, password);
+        await createUser(username, password);
+        const user = await loginUser(username, password);
         setCurrentUser(user);
         showMainContent(username);
     } catch (error) {
